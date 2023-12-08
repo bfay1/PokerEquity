@@ -1,0 +1,10 @@
+name:                pokerequity
+version:             0.1.0.0
+
+build-type:          Simple
+
+executable poker
+  main-is:          Main.hs
+  hs-source-dirs:   . 
+  build-depends:    base
+
