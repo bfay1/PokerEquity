@@ -60,6 +60,9 @@ type Hand = [Card]
 compareHands :: Hand -> Hand -> Bool
 compareHands x y = (classifyHand x, hash x) < (classifyHand y, hash y)
 
+equalHands :: Hand -> Hand -> Bool
+equalHands x y = (classifyHand x, hash x) == (classifyHand y, hash y)
+
 countRanks :: Hand -> [(Rank, Integer)]
 countRanks h = toList $ fromListWith (+) [(rank card, 1) | card <- h]
 
@@ -124,5 +127,24 @@ hash' hand handRank = case handRank of
     where
         rankCount = countRanks hand
         fnd ct rc = [r | (r, i) <- rc, i == ct]
+
+
+loss :: Hand -> [Hand] -> Bool
+loss hand hands = or $ map (\x -> compareHands hand x) hands
+
+ties :: Hand -> [Hand] -> Integer
+ties _ []           = 0
+ties hand (h:hs)    = (if (equalHands hand h) then 1 else 0) + (ties hand hs)
+
+shareOfPot :: Hand -> [Hand] -> Float
+shareOfPot hand hands
+    | loss hand hands   = (0 :: Float)
+    | otherwise         = (1 :: Float) / (fromIntegral (ties hand hands))
+
+
+
+
+
+
 
 
