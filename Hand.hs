@@ -69,13 +69,15 @@ classifyHand hand
     | flush && straight             = StraightFlush
     | foak                          = FourOfAKind
     | fullHouse                     = FullHouse
+    | flush                         = Flush
+    | straight                      = Straight
     | toak                          = ThreeOfAKind
     | twoPair                       = TwoPair
     | pair                          = Pair
     | otherwise                     = HighCard
     where
         flush :: Bool
-        flush = or [elem x [i | (_, i) <- suitCount] | x <- [5..7]]
+        flush = or [elem x [i | (_, i) <- suitCount] | x <- ([5..7] :: [Integer])]
         suitCount = toList $ fromListWith (+) [(suit card, 1) | card <- hand]
 
         straight :: Bool
