@@ -29,23 +29,6 @@ data Rank =
     deriving (Show, Ord, Eq, Enum, Bounded)
 
 
-rankMap :: Rank -> Int
-rankMap Two     = 2
-rankMap Three   = 3
-rankMap Four    = 4
-rankMap Five    = 5
-rankMap Six     = 6
-rankMap Seven   = 7
-rankMap Eight   = 8
-rankMap Nine    = 9
-rankMap Ten     = 10
-rankMap Jack    = 11
-rankMap Queen   = 12
-rankMap King    = 13
-rankMap Ace     = 14
-
-
-
 data Card = Card { suit :: Suit
                 , rank :: Rank }
 
@@ -74,62 +57,53 @@ data HandRank =
 
 type Hand = [Card]
 
-
 compareHands :: Hand -> Hand -> Bool
 compareHands x y = (classifyHand x, hash x) < (classifyHand y, hash y)
 
 countRanks :: Hand -> [(Rank, Integer)]
-countRanks hand = toList $ fromListWith (+) [(rank card, 1) | card <- hand]
-
-
-countSuits :: Hand -> [(Suit, Integer)]
-countSuits hand = toList $ fromListWith (+) [(suit card, 1) | card <- hand]
-
-flush :: Hand -> Bool
-flush hand = or [elem x [i | (_, i) <- countSuits hand] | x <- [5..7]]
-
-foak :: Hand -> Bool
-foak hand = elem (4 :: Integer) [i | (_, i) <- countRanks hand]
-
-fullHouse :: Hand -> Bool
-fullHouse hand = threeAndTwo || threeAndThree
-    where
-        threeAndThree   = length [i | (_, i) <- countRanks hand, i == 3] >= 2
-        threeAndTwo     = length twos >= 2 && elem 3 twos 
-        twos            = [i | (_, i) <- countRanks hand, i >= 2]
-
-toak :: Hand -> Bool
-toak hand = or [elem x [i | (_, i) <- countRanks hand] | x <- [3,4]]
-
-twoPair :: Hand -> Bool
-twoPair hand = length (filter (>= 2) [i | (_, i) <- countRanks hand]) >= 2
-
-pair :: Hand -> Bool
-pair hand = length (filter (>= 2) [i | (_, i) <- countRanks hand]) >= 1
-
-
-straight :: Hand -> Bool
-straight hand = or [all (\(x, y) -> succ x == y) (pairwise ls) | ls <- hands]
-    where
-        hands = [take 5 hand, take 5 (drop 1 hand), drop 2 hand]
-        rankSort = sort . map rank
-        pairwise ls = zip (rankSort ls) (tail (rankSort ls))
-
+countRanks h = toList $ fromListWith (+) [(rank card, 1) | card <- h]
 
 
 classifyHand :: Hand -> HandRank
 classifyHand hand
-    | flush hand && straight hand   = StraightFlush
-    | foak hand                     = FourOfAKind
-    | fullHouse hand                = FullHouse
-    | toak hand                     = ThreeOfAKind
-    | twoPair hand                  = TwoPair
-    | pair hand                     = Pair
+    | flush && straight             = StraightFlush
+    | foak                          = FourOfAKind
+    | fullHouse                     = FullHouse
+    | toak                          = ThreeOfAKind
+    | twoPair                       = TwoPair
+    | pair                          = Pair
     | otherwise                     = HighCard
+    where
+        flush :: Bool
+        flush = or [elem x [i | (_, i) <- suitCount] | x <- [5..7]]
+        suitCount = toList $ fromListWith (+) [(suit card, 1) | card <- hand]
 
+        straight :: Bool
+        straight = or [all (\(x, y) -> succ x == y) (pairwise ls) | ls <- hands]
 
-high :: Hand -> Rank
-high = maximum . map rank
+        hands = [take 5 hand, take 5 (drop 1 hand), drop 2 hand]
+        rankSort = sort . map rank
+        pairwise ls = zip (rankSort ls) (tail (rankSort ls))
+
+        foak :: Bool
+        foak = elem (4 :: Integer) [i | (_, i) <- countRanks hand]
+
+        fullHouse :: Bool
+        fullHouse = threeAndTwo || threeAndThree
+
+        threeAndThree   = length [i | (_, i) <- countRanks hand, i == 3] >= 2
+        threeAndTwo     = length twos >= 2 && elem 3 twos 
+        twos            = [i | (_, i) <- countRanks hand, i >= 2]
+
+        toak :: Bool
+        toak = or [elem x [i | (_, i) <- countRanks hand] | x <- [3,4]]
+
+        twoPair :: Bool
+        twoPair = length (filter (>= 2) [i | (_, i) <- countRanks hand]) >= 2
+
+        pair :: Bool
+        pair = length (filter (>= 2) [i | (_, i) <- countRanks hand]) >= 1
+
 
 hash :: Hand -> [Rank]
 hash hand = hash' hand (classifyHand hand)
@@ -148,9 +122,5 @@ hash' hand handRank = case handRank of
     where
         rankCount = countRanks hand
         fnd ct rc = [r | (r, i) <- rc, i == ct]
-
-
-
-
 
 
