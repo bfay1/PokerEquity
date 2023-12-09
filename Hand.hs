@@ -57,18 +57,9 @@ data HandRank =
 
 type Hand = [Card]
 
-compareHands :: Hand -> Hand -> Bool
-compareHands x y = (classifyHand x, hash x) < (classifyHand y, hash y)
 
-equalHands :: Hand -> Hand -> Bool
-equalHands x y = (classifyHand x, hash x) == (classifyHand y, hash y)
-
-countRanks :: Hand -> [(Rank, Integer)]
-countRanks h = toList $ fromListWith (+) [(rank card, 1) | card <- h]
-
-
-classifyHand :: Hand -> HandRank
-classifyHand hand
+sort' :: Hand -> HandRank
+sort' hand
     | flush && straight             = StraightFlush
     | foak                          = FourOfAKind
     | fullHouse                     = FullHouse
@@ -91,60 +82,53 @@ classifyHand hand
         pairwise ls = zip (rankSort ls) (tail (rankSort ls))
 
         foak :: Bool
-        foak = elem (4 :: Integer) [i | (_, i) <- countRanks hand]
+        foak = elem (4 :: Integer) [i | (_, i) <- rankCount]
 
         fullHouse :: Bool
         fullHouse = threeAndTwo || threeAndThree
 
-        threeAndThree   = length [i | (_, i) <- countRanks hand, i == 3] >= 2
+        threeAndThree   = length [i | (_, i) <- rankCount, i == 3] >= 2
         threeAndTwo     = length twos >= 2 && elem 3 twos 
-        twos            = [i | (_, i) <- countRanks hand, i >= 2]
+        twos            = [i | (_, i) <- rankCount, i >= 2]
 
         toak :: Bool
-        toak = or [elem x [i | (_, i) <- countRanks hand] | x <- [3,4]]
+        toak = or [elem x [i | (_, i) <- rankCount] | x <- [3,4]]
 
         twoPair :: Bool
-        twoPair = length (filter (>= 2) [i | (_, i) <- countRanks hand]) >= 2
+        twoPair = length (filter (>= 2) [i | (_, i) <- rankCount]) >= 2
 
         pair :: Bool
-        pair = length (filter (>= 2) [i | (_, i) <- countRanks hand]) >= 1
+        pair = length (filter (>= 2) [i | (_, i) <- rankCount]) >= 1
 
+        rankCount = toList $ fromListWith (+) [(rank card, 1) | card <- hand]
 
 hash :: Hand -> [Rank]
-hash hand = hash' hand (classifyHand hand)
-
-hash' :: Hand -> HandRank -> [Rank]
-hash' hand handRank = case handRank of
+hash hand = case (sort' hand) of
     StraightFlush       -> reverse . sort $ map rank hand
     Flush               -> reverse . sort $ map rank hand
     HighCard            -> reverse . sort $ map rank hand
     Straight            -> reverse . sort $ map rank hand
     Pair                -> reverse . sort $ map rank hand
-    FourOfAKind         -> fnd 4 rankCount ++ fnd 1 rankCount
-    FullHouse           -> fnd 3 rankCount ++ fnd 2 rankCount
-    ThreeOfAKind        -> fnd 3 rankCount ++ fnd 1 rankCount
-    TwoPair             -> fnd 2 rankCount ++ fnd 1 rankCount
+    FourOfAKind         -> find' 4 rankCount ++ find' 1 rankCount
+    FullHouse           -> find' 3 rankCount ++ find' 2 rankCount
+    ThreeOfAKind        -> find' 3 rankCount ++ find' 1 rankCount
+    TwoPair             -> find' 2 rankCount ++ find' 1 rankCount
     where
-        rankCount = countRanks hand
-        fnd ct rc = [r | (r, i) <- rc, i == ct]
+        rankCount = toList $ fromListWith (+) [(rank card, 1) | card <- hand]
+        find' :: Integer -> [(Rank, Integer)] -> [Rank]
+        find' ct rc = [r | (r, i) <- rc, i == ct]
 
 
-loss :: Hand -> [Hand] -> Bool
-loss hand hands = or $ map (\x -> compareHands hand x) hands
-
-ties :: Hand -> [Hand] -> Integer
-ties _ []           = 0
-ties hand (h:hs)    = (if (equalHands hand h) then 1 else 0) + (ties hand hs)
 
 shareOfPot :: Hand -> [Hand] -> Float
 shareOfPot hand hands
-    | loss hand hands   = (0 :: Float)
-    | otherwise         = (1 :: Float) / (fromIntegral (ties hand hands))
-
-
-
-
-
+    | or $ map (compare' hand) hands            = 0
+    | otherwise                                 = 1 / (foldr (\x acc -> acc + (equal' x hand)) 0 hands)
+    where
+        compare' x y    = (sort' x, hash x) < (sort' y, hash y)
+        equal' x y
+             | (sort' x, hash x) == (sort' y, hash y)   = 1
+             | otherwise                                = 0
 
 
 
