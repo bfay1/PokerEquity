@@ -4,6 +4,10 @@ import Data.Map (fromListWith, toList)
 import Data.List (sort)
 
 
+{-
+ - obvious
+-}
+
 data Suit =
       Spades
     | Hearts
@@ -11,6 +15,10 @@ data Suit =
     | Clubs
     deriving (Show, Ord, Eq, Enum, Bounded)
 
+
+{-
+ - obvious
+-}
 
 data Rank = 
       Ace
@@ -28,6 +36,9 @@ data Rank =
     | Two
     deriving (Show, Ord, Eq, Enum, Bounded)
 
+{-
+ - obvious
+-}
 
 data Card = Card { suit :: Suit
                 , rank :: Rank }
@@ -41,6 +52,10 @@ instance Ord Card where
 instance Show Card where
     show (Card suit rank) = show suit ++ ", " ++ show rank
 
+
+{-
+ - obvious
+-}
 
 data HandRank =
       StraightFlush
@@ -102,6 +117,12 @@ sort' hand
 
         rankCount = toList $ fromListWith (+) [(rank card, 1) | card <- hand]
 
+{-
+ - This "hashes" the hand into a list of ranks. The idea here is that it will be
+ - sorted in some kind of high card ordering, such that hands of the same type
+ - will be comparable.
+ -}
+
 hash :: Hand -> [Rank]
 hash hand = case (sort' hand) of
     StraightFlush       -> reverse . sort $ map rank hand
@@ -118,14 +139,20 @@ hash hand = case (sort' hand) of
         find' :: Integer -> [(Rank, Integer)] -> [Rank]
         find' ct rc = [r | (r, i) <- rc, i == ct]
 
-
+{-
+ - Share of the pot for the player's hand. If the player's hand returns true
+ - from the compare function, return 0 because they lost. Otherwise, they won.
+ - Since it's possible to have a split pot, the reciprocal of the number of players with a winning
+ - hand is the nonzero return value. Hopefully this is one.
+ - TODO: verify that the hands are compared properly in compare' 
+ -}
 
 shareOfPot :: Hand -> [Hand] -> Float
 shareOfPot hand hands
     | or $ map (compare' hand) hands            = 0
     | otherwise                                 = 1 / (foldr (\x acc -> acc + (equal' x hand)) 0 hands)
     where
-        compare' x y    = (sort' x, hash x) < (sort' y, hash y)
+        compare' x y    = (sort' x, hash y) < (sort' y, hash x)
         equal' x y
              | (sort' x, hash x) == (sort' y, hash y)   = 1
              | otherwise                                = 0
