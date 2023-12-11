@@ -1,7 +1,7 @@
 module Hand where
 
 import Data.Map (fromListWith, toList)
-import Data.List (sort)
+import Data.List (sort, group)
 
 
 {-
@@ -85,13 +85,14 @@ sort' hand
     | pair                          = Pair
     | otherwise                     = HighCard
     where
+        xs = (sort . map rank) hand
         flush :: Bool
         flush = or [elem x [i | (_, i) <- suitCount] | x <- ([5..7] :: [Integer])]
         suitCount = toList $ fromListWith (+) [(suit card, 1) | card <- hand]
 
         straight :: Bool
-        straight = or [all (\(x, y) -> succ x == y) (pairwise ls) | ls <- hands]
-
+        straight = or [distinct ls && all (\(x, y) -> succ x == y) (pairwise ls) | ls <- hands]
+        distinct xs = (sort . map length . group) xs == [1,1,1,1,1]
         hands = [take 5 hand, take 5 (drop 1 hand), drop 2 hand]
         rankSort = sort . map rank
         pairwise ls = zip (rankSort ls) (tail (rankSort ls))
