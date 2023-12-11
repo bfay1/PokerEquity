@@ -1,4 +1,4 @@
-
+module Hand where
 
 import Data.Map (fromListWith, toList)
 import Data.List (sort)
