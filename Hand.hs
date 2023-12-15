@@ -36,6 +36,14 @@ data Rank =
     | Two
     deriving (Show, Ord, Eq, Enum, Bounded)
 
+
+ranks :: [Rank]
+ranks = [Ace, King, Queen, Jack, Ten, Nine, Eight, Seven, Six, Five, Four, Three, Two]
+
+
+suits :: [Suit]
+suits = [Spades, Diamonds, Hearts, Clubs]
+
 {-
  - obvious
 -}
@@ -130,11 +138,11 @@ hash hand = case (sort' hand) of
     Flush               -> reverse . sort $ map rank hand
     HighCard            -> reverse . sort $ map rank hand
     Straight            -> reverse . sort $ map rank hand
-    Pair                -> reverse . sort $ map rank hand
     FourOfAKind         -> find' 4 rankCount ++ find' 1 rankCount
     FullHouse           -> find' 3 rankCount ++ find' 2 rankCount
     ThreeOfAKind        -> find' 3 rankCount ++ find' 1 rankCount
     TwoPair             -> find' 2 rankCount ++ find' 1 rankCount
+    Pair                -> find' 2 rankCount ++ find' 1 rankCount
     where
         rankCount = toList $ fromListWith (+) [(rank card, 1) | card <- hand]
         find' :: Integer -> [(Rank, Integer)] -> [Rank]
@@ -148,9 +156,10 @@ hash hand = case (sort' hand) of
  - TODO: verify that the hands are compared properly in compare' 
  -}
 
+
 shareOfPot :: Hand -> [Hand] -> Float
 shareOfPot hand hands
-    | or $ map (compare' hand) hands            = 0
+    | or $ map (\x -> compare' hand x) hands    = 0
     | otherwise                                 = 1 / (foldr (\x acc -> acc + (equal' x hand)) 0 hands)
     where
         compare' x y    = (sort' x, hash y) < (sort' y, hash x)
