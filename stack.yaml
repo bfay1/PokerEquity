@@ -4,6 +4,9 @@ packages:
   - .
 
 extra-deps:
-  - random-1.2.0
+  - random-1.2.1
   - parallel-3.2.2.0
-# ghc-options: -threaded
+# ghc-options:
+#   - -threaded
+#   - -eventlog
+#   - -rtsopts

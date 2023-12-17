@@ -126,6 +126,14 @@ monteCarlo2 n user community players pot = do
     results <- sequence (runEval $ parList rpar experiments)
     return $ pot * (sum results / fromIntegral n)
 
+--
+-- monteCarlo3 :: Int -> Hand -> [Card] -> Int -> Float -> IO Float
+-- monteCarlo3 n user community players pot = do
+--     let experiments = replicate n (playRound user community players)
+--         results = parMap rpar (\experiment -> runEval experiment) experiments
+--     return $ pot * (sum results / fromIntegral n)
+
+
 -- chunking
 
 -- monteCarlo3 :: Int -> Hand -> [Card] -> Int -> Float -> IO Float
@@ -153,7 +161,7 @@ three = [Card Diamonds Ace, Card Spades King, Card Spades Two, Card Spades Three
 
 main :: IO ()
 main = do
-    ans <- monteCarlo 50000 userHand [Card Hearts Nine] 3 500
+    ans <- monteCarlo2 50000 userHand [Card Hearts Nine] 3 500
     putStrLn $ show ans
 
 
