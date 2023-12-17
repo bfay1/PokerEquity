@@ -3,7 +3,9 @@ module Poker where
 import Data.List
 import Data.Ord
 import System.Random
+import System.Entropy
 import Control.Applicative
+import Control.Parallel.Strategies
 
 data Suit = Spades | Hearts | Diamonds | Clubs
     deriving (Show, Eq)
@@ -39,15 +41,6 @@ type Hand = [Card]
 type Deck = [Card]
 type Table = [[Card]]
 
-
-one :: Hand
-one = [Card Spades King, Card Clubs King, Card Hearts Two, Card Hearts Three, Card Hearts Four]
-
-two :: Hand
-two = [Card Diamonds King, Card Spades King, Card Spades Two, Card Spades Three, Card Spades Four]
-
-three :: Hand
-three = [Card Diamonds Ace, Card Spades King, Card Spades Two, Card Spades Three, Card Spades Four]
 
 share :: [Hand] -> Float
 share (x:xs)
@@ -90,6 +83,7 @@ shuffle gen deck = fst $ foldl shuffleStep ([], gen) deck
             in (front ++ [cardIndex] ++ back, newGen)
 
 
+
 deal :: StdGen -> Hand -> [Card] -> Int -> Table
 deal gen user community n = deal' shuffled 
     where
@@ -102,7 +96,7 @@ deal gen user community n = deal' shuffled
 
 
 userHand :: Hand
-userHand = [Card Diamonds Two, Card Hearts Four]
+userHand = [Card Diamonds Ace, Card Hearts Ace]
 
 bestHand :: [Card] -> Hand
 bestHand cards = minimumBy (comparing ranking) $ filter ((==5) . length) (subsequences cards)
@@ -110,15 +104,39 @@ bestHand cards = minimumBy (comparing ranking) $ filter ((==5) . length) (subseq
 scoreRound :: Table -> Float
 scoreRound (community:players) = share $ (map (bestHand . (++ community))) players
 
-playRound :: StdGen -> Hand -> [Card] -> Int -> Float -> Float
-playRound gen user community players pot = pot * (scoreRound (deal gen user community players))
+playRound :: Hand -> [Card] -> Int -> IO Float
+playRound user community players = do
+    gen <- newStdGen
+    let (gen', _) = random gen :: (Int, StdGen) in
+        return $ scoreRound (deal gen user community players)
 
+
+-- sequential
 
 monteCarlo :: Int -> Hand -> [Card] -> Int -> Float -> IO Float
 monteCarlo n user community players pot = do
-    gen <- getStdGen
-    let (gen', _) = random gen :: (Int, StdGen) in
-        return ((sum $ map (\_ -> playRound gen user community players pot) [1..n]) / (fromIntegral n))
+    let experiments = replicate n (playRound user community players)
+    results <- sequence experiments
+    return $ pot * (sum results / (fromIntegral n))
+
+-- control.parallel
+
+monteCarlo2 :: Int -> Hand -> [Card] -> Int -> Float -> IO Float
+monteCarlo2 n user community players pot = do
+    let experiments = replicate n (playRound user community players)
+    results <- sequence (runEval $ parList rseq experiments)
+    return $ pot * (sum results / fromIntegral n)
+
+
+
+one :: Hand
+one = [Card Spades King, Card Clubs King, Card Hearts Two, Card Hearts Three, Card Hearts Four]
+
+two :: Hand
+two = [Card Diamonds King, Card Spades King, Card Spades Two, Card Spades Three, Card Spades Four]
+
+three :: Hand
+three = [Card Diamonds Ace, Card Spades King, Card Spades Two, Card Spades Three, Card Spades Four]
 
 
 main :: IO ()
