@@ -3,7 +3,6 @@ module Poker where
 import Data.List
 import Data.Ord
 import System.Random
-import System.Entropy
 import Control.Applicative
 import Control.Parallel.Strategies
 
