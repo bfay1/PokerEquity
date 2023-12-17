@@ -5,6 +5,8 @@ import Data.Ord
 import System.Random
 import Control.Applicative
 import Control.Parallel.Strategies
+import Control.Monad.Par
+import Control.Concurrent.Async
 
 data Suit = Spades | Hearts | Diamonds | Clubs
     deriving (Show, Eq)
@@ -109,6 +111,8 @@ playRound user community players = do
     let (gen', _) = random gen :: (Int, StdGen) in
         return $ scoreRound (deal gen user community players)
 
+playRound2 :: StdGen -> Hand -> [Card] -> Int -> IO Float
+playRound2 gen user community players = return $ scoreRound (deal gen user community players)
 
 -- sequential
 
@@ -139,6 +143,19 @@ monteCarlo2 n user community players pot = do
 -- chunkList _ [] = []
 -- chunkList n xs = take n xs : chunkList n (drop n xs)
 
+-- async
+monteCarlo4 :: Int -> Hand -> [Card] -> Int -> Float -> IO Float
+monteCarlo4 n user community players pot = do
+    results <- mapConcurrently (\_ -> playRound user community players) [1..n]
+    return $ pot * (sum results / fromIntegral n)
+
+-- async, pregenerate RNGs
+monteCarlo5 :: Int -> Hand -> [Card] -> Int -> Float -> IO Float
+monteCarlo5 n user community players pot = do
+    gen <- newStdGen  -- Initial RNG
+    let seeds = take n $ randoms gen  -- Generate a list of seeds
+    results <- mapConcurrently (\seed -> playRound2 (mkStdGen seed) user community players) seeds
+    return $ pot * (sum results / fromIntegral n)
 
 
 one :: Hand
