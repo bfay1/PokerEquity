@@ -1,28 +1,52 @@
+{-# LANGUAGE DeriveGeneric #-}
 module Main where
 
+import System.CPUTime
 import Data.List
 import Data.Ord
 import System.Random
 import Control.Applicative
 import Control.Parallel.Strategies
 import Control.Monad.Par
+import Control.DeepSeq
 import Control.Concurrent.Async
+import GHC.Generics (Generic)
+import Control.Monad
+
+-- import Control.Monad.MonteCarlo
+-- import System.Random.TF
+
+chunkSize :: Int
+chunkSize = 100
+
+forceToNF :: NFData a => a -> b -> b
+forceToNF x y = x `deepseq` y
+
+chunksOf :: Int -> [a] -> [[a]]
+chunksOf _ [] = []
+chunksOf n xs = take n xs : chunksOf n (drop n xs)
 
 data Suit = Spades | Hearts | Diamonds | Clubs
-    deriving (Show, Eq)
+    deriving (Generic, Show, Eq)
 
 
 data Rank =  Ace | King | Queen | Jack | Ten | Nine | Eight | Seven | Six | Five | Four | Three | Two
-    deriving (Show, Ord, Eq, Enum, Bounded)
+    deriving (Generic, Show, Ord, Eq, Enum, Bounded)
 
 ranks :: [Rank]
 ranks = [Ace, King, Queen, Jack, Ten, Nine, Eight, Seven, Six, Five, Four, Three, Two]
-
 
 suits :: [Suit]
 suits = [Spades, Diamonds, Hearts, Clubs]
 
 data Card = Card { suit :: Suit, rank :: Rank }
+
+
+instance NFData Rank
+instance NFData Suit
+
+instance NFData Card where
+  rnf (Card r s) = rnf r `seq` rnf s
 
 instance Eq Card where
      x == y = rank x == rank y
@@ -96,6 +120,17 @@ deal gen user community n = deal' shuffled
         opponentCards m (x:y:zs) = [x, y] : (opponentCards (m - 1) zs)
 
 
+
+deal2 :: Hand -> [Card] -> Int -> [Card] -> Table
+deal2 user community n shuffled = deal2' shuffled'
+    where
+        shuffled' = community ++ (shuffled \\ complement)
+        complement = community ++ user
+        deal2' (a:b:c:d:e:fs) = [a,b,c,d,e] : user : (opponentCards n fs)
+        opponentCards 0 _ = []
+        opponentCards m (x:y:zs) = [x, y] : (opponentCards (m - 1) zs)
+
+
 userHand :: Hand
 userHand = [Card Diamonds Ace, Card Hearts Ace]
 
@@ -111,8 +146,9 @@ playRound user community players = do
     let (gen', _) = random gen :: (Int, StdGen) in
         return $ scoreRound (deal gen user community players)
 
-playRound2 :: StdGen -> Hand -> [Card] -> Int -> IO Float
-playRound2 gen user community players = return $ scoreRound (deal gen user community players)
+playRound2 :: Hand -> [Card] -> Int -> [Card] -> Float
+playRound2 user community players shuffled = do
+    scoreRound (deal2 user community players shuffled)
 
 -- sequential
 
@@ -152,18 +188,65 @@ monteCarlo2 n user community players pot = do
 -- chunkList n xs = take n xs : chunkList n (drop n xs)
 
 -- async
+
 monteCarlo4 :: Int -> Hand -> [Card] -> Int -> Float -> IO Float
 monteCarlo4 n user community players pot = do
     results <- mapConcurrently (\_ -> playRound user community players) [1..n]
     return $ pot * (sum results / fromIntegral n)
 
 -- async, pregenerate RNGs
-monteCarlo5 :: Int -> Hand -> [Card] -> Int -> Float -> IO Float
-monteCarlo5 n user community players pot = do
-    gen <- newStdGen  -- Initial RNG
-    let seeds = take n $ randoms gen  -- Generate a list of seeds
-    results <- mapConcurrently (\seed -> playRound2 (mkStdGen seed) user community players) seeds
-    return $ pot * (sum results / fromIntegral n)
+-- monteCarlo5 :: Int -> Hand -> [Card] -> Int -> Float -> IO Float
+-- monteCarlo5 n user community players pot = do
+--     gen <- newStdGen  -- Initial RNG
+--     let seeds = take n $ randoms gen  -- Generate a list of seeds
+--     results <- mapConcurrently (\seed -> playRound2 (mkStdGen seed) user community players) seeds
+--     return $ pot * (sum results / fromIntegral n)
+
+
+-- monteCarlo6 :: Int -> Hand -> [Card] -> Int -> Float -> [Card] -> IO Float
+-- monteCarlo6 n user community players pot shuffled = do
+--     results <- mapM (\chunk -> mapConcurrently (\_ -> playRound2 user community players shuffled) chunk) $ chunksOf 100 [1..n]
+--     return $ pot * (sum (concat results) / fromIntegral n)
+
+
+monteCarlo7 :: Float -> Hand -> [Card] -> Int -> Float -> IO Float
+monteCarlo7 n user community players pot = do
+    gen <- newStdGen  -- Initialize a new random number generator
+    let initialDeck = [Card s r | r <- [minBound..maxBound], s <- [Hearts,Diamonds,Clubs,Spades]] 
+    let shuffledDecks = map (\_ -> forceToNF (shuffle gen initialDeck) (shuffle gen initialDeck)) [1..n] `using` parList rdeepseq
+    -- let experiments = foldM (\acc x -> do
+    --                                 res <- playRound2 user community players x
+    --                                 return $ acc + res
+    --                         ) 0.0 shuffledDecks
+    let experiments = map (\deck -> playRound2 user community players deck) shuffledDecks
+    -- results <- sequence experiments
+    return $ (sum experiments) / n
+
+
+
+monteCarlo8 :: Int -> Hand -> [Card] -> Int -> Float -> IO Float 
+monteCarlo8 n user community players pot = do
+    gen <- newStdGen  -- Initialize a new random number generator
+    let generators = take n $ iterate (\(_, g) -> random g :: (Int, StdGen)) (0, gen)
+    let initialDeck = [Card s r | r <- [minBound..maxBound], s <- [Hearts,Diamonds,Clubs,Spades]]
+    let shuffledDecks = map (\(_, g) -> forceToNF (shuffle g initialDeck) (shuffle g initialDeck)) generators `using` parList rdeepseq
+    -- let experiments = foldM (\acc x -> do
+    --                                 res <- playRound2 user community players x
+    --                                 return $ acc + res
+    --                         ) 0.0 shuffledDecks
+    let experiments = map (\deck -> playRound2 user community players deck) shuffledDecks
+    -- results <- sequence experiments
+    return $ (sum experiments) / fromIntegral n
+
+monteCarlo9 :: Int -> Hand -> [Card] -> Int -> Float -> IO Float 
+monteCarlo9 n user community players pot = do
+    gen <- newStdGen  -- Initialize a new random number generator
+    let generators = take n $ iterate (\(_, g) -> random g :: (Int, StdGen)) (0, gen)
+    let initialDeck = [Card s r | r <- [minBound..maxBound], s <- [Hearts,Diamonds,Clubs,Spades]]
+    let shuffledDecks = map (\(_, g) -> forceToNF (shuffle g initialDeck) (shuffle g initialDeck)) generators `using` parList rdeepseq
+    -- let experiments = concatMap (\chunk -> runEval $ parList rdeepseq (map (\deck -> !(playRound2 user community players deck)) chunk)) (chunksOf chunkSize shuffledDecks)
+    let experiments = concatMap (\chunk -> runEval $ parList rdeepseq (map (\deck -> let result = playRound2 user community players deck in result `seq` result) chunk)) (chunksOf chunkSize shuffledDecks)
+    return $ (sum experiments `using` rdeepseq) / fromIntegral n
 
 
 one :: Hand
@@ -175,11 +258,15 @@ two = [Card Diamonds King, Card Spades King, Card Spades Two, Card Spades Three,
 three :: Hand
 three = [Card Diamonds Ace, Card Spades King, Card Spades Two, Card Spades Three, Card Spades Four]
 
+-- forceEvaluation :: NFData a => a -> a
+-- forceEvaluation x = x `deepseq` x
 
 main :: IO ()
 main = do
-    ans <- monteCarlo2 50000 userHand [Card Hearts Nine] 3 500
-    putStrLn $ show ans
+    -- result <- monteCarlo7 100000 userHand [Card Diamonds Five] 3 100
+    -- result <- monteCarlo 100000 userHand [Card Diamonds Five] 3 100
+    result <- monteCarlo9 100000 userHand [Card Diamonds Five] 3 100
+    putStrLn $ show result
 
 
 
