@@ -226,7 +226,7 @@ main = do
     hands <- readHandsFromFile "hands.txt"
     let strategy = parList rseq
         ls = (listOfHands (map stoh hands))
-    putStrLn $ show $ parMap strategy mcHand ls
+    putStrLn $ show $ runEval $ parList rseq (map mcHand ls)
     -- putStrLn $ show (sum result)
 
 
