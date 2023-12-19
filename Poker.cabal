@@ -8,7 +8,17 @@ executable poker
   build-depends:
     base >= 4.14 && < 5,
     parallel == 3.2.2.0,
-    random == 1.2.1
+    random == 1.2.1,
+    hs-carbon == 0.1.1.0,
+    deepseq >= 1.4.6.1,
+    async == 2.2.4,
+    time == 1.12.2,
+    text == 1.2.5.0,
+    binary == 0.8.9.1
+    -- repa >= 3.4 && < 4,
+    -- repa-algorithms == 3.4.0.2
+  -- accelerate >= 1.2 && < 2
+  -- monad-par == 0.3.4,
   hs-source-dirs:
     .
   ghc-options:
