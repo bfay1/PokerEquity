@@ -1,6 +1,9 @@
 {-# LANGUAGE DeriveGeneric #-}
 module Main where
 
+-- for building and running instructions
+-- https://github.com/bfay1/PokerEquity
+
 import Data.List
 import Data.Ord
 import System.Random
@@ -39,6 +42,9 @@ data Suit = Spades | Hearts | Diamonds | Clubs
 data Rank =  Ace | King | Queen | Jack | Ten | Nine | Eight | Seven | Six | Five | Four | Three | Two
     deriving (Generic, Show, Ord, Eq, Enum, Bounded)
 
+data HandRank = StraightFlush | FourOfAKind | FullHouse | Flush | Straight | ThreeOfAKind | TwoPair | Pair | HighCard
+    deriving (Eq, Show, Ord, Enum, Bounded)
+
 ranks :: [Rank]
 ranks = [Ace, King, Queen, Jack, Ten, Nine, Eight, Seven, Six, Five, Four, Three, Two]
 
@@ -57,9 +63,6 @@ instance Ord Card where
 
 instance Show Card where
     show (Card s r) = show r ++ " of " ++ show s
-
-data HandRank = StraightFlush | FourOfAKind | FullHouse | Flush | Straight | ThreeOfAKind | TwoPair | Pair | HighCard
-    deriving (Eq, Show, Ord, Enum, Bounded)
 
 
 type Hand = [Card]
@@ -143,6 +146,7 @@ playRound gen user community players =
 
 makeGenerators :: Int -> [StdGen]
 makeGenerators n = runEval $ parList rseq (map mkStdGen [50..(50 + n - 1)])
+
 
 monteCarlo :: Int -> Hand -> [Card] -> Int -> Float -> Float
 monteCarlo n user community players pot =
