@@ -8,16 +8,9 @@ import System.Random
 import Control.Applicative
 import Control.Parallel.Strategies
 import Control.DeepSeq
-import Control.Concurrent.Async
+import Control.Concurrent
 import GHC.Generics
 import Control.Monad
-
-
--- import Data.Array.Repa
--- import Data.Array.Repa.Algorithms.Randomish
--- import Control.Monad.Par
--- import Control.Monad.MonteCarlo
--- import System.Random.TF
 
 chunkSize :: Int
 chunkSize = 100
@@ -143,39 +136,47 @@ bestHand cards = minimumBy (comparing ranking) $ filter ((==5) . length) (subseq
 
 scoreRound :: Table -> Float
 scoreRound (community:players) = share $ (map (bestHand . (++ community))) players
---
--- playRound :: Hand -> [Card] -> Int -> Float
--- playRound user community players =
---     let gen = newStdGen :: IO StdGen
---         (gen', _) = random gen in
---         -- (gen', _) = random gen :: (Int, StdGen) in
---     scoreRound (deal gen' user community players)
 
 
 playRound :: StdGen -> Hand -> [Card] -> Int -> Float
 playRound gen user community players = 
     scoreRound (deal gen user community players)
 
-
 makeGenerators :: Int -> [StdGen]
-makeGenerators n = map mkStdGen [50..(50 + n - 1)]
-
-
-playRound2 :: Hand -> [Card] -> Int -> [Card] -> Float
-playRound2 user community players shuffled = do
-    scoreRound (deal2 user community players shuffled)
-
+makeGenerators n = runEval $ parList rpar (map mkStdGen [50..(50 + n - 1)])
 
 monteCarlo :: Int -> Hand -> [Card] -> Int -> Float -> Float
 monteCarlo n user community players pot =
     let results = (map (\g -> playRound g user community players) (makeGenerators n)) in
     pot * (sum results / (fromIntegral n))
 
+-- -- working parallelization
+-- parallelMonteCarlo :: Int -> Hand -> [Card] -> Int -> Float -> Float
+-- parallelMonteCarlo n user community players pot =
+--     let results = runEval $ parList rpar (map (\g -> playRound g user community players) (makeGenerators n)) in
+--     pot * (sum results / (fromIntegral n))
 
-parallelMonteCarlo :: Int -> Hand -> [Card] -> Int -> Float -> Float
-parallelMonteCarlo n user community players pot =
-    let results = runEval $ parList rseq (map (\g -> playRound g user community players) (makeGenerators n)) in
-    pot * (sum results / (fromIntegral n))
+
+-- Create a fixed number of RNGs
+makeFixedRNGs :: Int -> [StdGen]
+makeFixedRNGs m = map mkStdGen [50..(49 + m)]
+
+-- Function to divide experiments into chunks
+divideIntoChunks :: Int -> [a] -> [[a]]
+divideIntoChunks _ [] = []
+divideIntoChunks n xs = take n xs : divideIntoChunks n (drop n xs)
+
+-- Parallel Monte Carlo function using a fixed number of RNGs
+parallelMonteCarloFixedRNGs :: Int -> Int -> Hand -> [Card] -> Int -> Float -> Float
+parallelMonteCarloFixedRNGs m n user community players pot =
+    let rngs = cycle (makeFixedRNGs m) 
+        results = runEval $ parList rseq [playRound gen user community players | gen <- take n rngs]
+    in pot * (sum results / fromIntegral n)
+
+-- Function to run a chunk of experiments
+runChunk :: (StdGen, [(Hand, [Card], Int)]) -> [Float]
+runChunk (gen, experiments) = 
+    map (\(user, community, players) -> playRound gen user community players) experiments
 
 
 initialDeck :: [Card]
@@ -221,28 +222,13 @@ listOfHands :: [Card] -> [[Card]]
 listOfHands (x:y:xs) = [x, y] : listOfHands xs
 listOfHands _ = []
 
--- result <- monteCarloParShuffle 10000 userHand [Card Diamonds Five] 3 100
--- result <- monteCarloParExperiment 10000 userHand [Card Diamonds Five] 3 100
--- result <- monteCarloParBoth 10000 userHand [Card Diamonds Five] 3 100
-
 mcHand :: Hand -> Float
 mcHand hand = monteCarlo 1000 hand [] 3 100
 
 runMc :: [Hand] -> [Float]
 runMc ls = runEval $ parList rseq (map mcHand ls)
 
-    -- hands <- readHandsFromFile "hands.txt"
-    -- let strategy = parList rseq
-    --     ls = (listOfHands (map stoh hands))
-
 main :: IO ()
 main = do
-    -- putStrLn $ show $ parallelMonteCarlo 10000 userHand [] 3 100
-    putStrLn $ show $ parallelMonteCarlo 10000 userHand [] 3 100
-    -- putStrLn $ show $ runMc ls
-    -- putStrLn $ show (sum result)
 
-
-
-
-
+    putStrLn $ show $ parallelMonteCarloFixedRNGs 150 10000 userHand [] 3 100
