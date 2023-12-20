@@ -12,7 +12,6 @@ import Control.Concurrent.Async
 import GHC.Generics
 import Control.Monad
 
-
 -- import Data.Array.Repa
 -- import Data.Array.Repa.Algorithms.Randomish
 -- import Control.Monad.Par
@@ -143,6 +142,8 @@ bestHand cards = minimumBy (comparing ranking) $ filter ((==5) . length) (subseq
 
 scoreRound :: Table -> Float
 scoreRound (community:players) = share $ (map (bestHand . (++ community))) players
+
+
 --
 -- playRound :: Hand -> [Card] -> Int -> Float
 -- playRound user community players =
@@ -158,7 +159,7 @@ playRound gen user community players =
 
 
 makeGenerators :: Int -> [StdGen]
-makeGenerators n = map mkStdGen [50..(50 + n - 1)]
+makeGenerators n = runEval $ parList rseq (map mkStdGen [50..(50 + n - 1)])
 
 
 playRound2 :: Hand -> [Card] -> Int -> [Card] -> Float
@@ -178,6 +179,41 @@ parallelMonteCarlo n user community players pot =
     pot * (sum results / (fromIntegral n))
 
 
+recursiveMonteCarlo :: StdGen -> Int -> Hand -> [Card] -> Int -> Float -> [Float]
+recursiveMonteCarlo _ 0 _ _ _ _ = []
+recursiveMonteCarlo gen n user community players pot = 
+    let (gen1, gen2) = split gen
+    in (runEval $ rseq $ playRound gen user community players) : (runEval $ rpar $ recursiveMonteCarlo gen2 (n - 1) user community players pot)
+    -- in (playRound gen user community players) : (recursiveMonteCarlo gen2 (n - 1) user community players pot)
+
+recursiveChunkMonteCarlo :: StdGen -> Int -> Hand -> [Card] -> Int -> Float -> [Float]
+recursiveChunkMonteCarlo _ 0 _ _ _ _ = []
+recursiveChunkMonteCarlo gen n user community players pot = 
+    let (gen1, gen2) = split gen
+    in (runEval $ rpar $ replicate 100 (playRound gen user community players)) ++ (runEval $ rseq $ recursiveChunkMonteCarlo gen2 (n - 100) user community players pot)
+    -- in (playRound gen user community players) : (recursiveMonteCarlo gen2 (n - 1) user community players pot)
+
+-- Create a fixed number of RNGs
+makeFixedRNGs :: Int -> [StdGen]
+makeFixedRNGs m = map mkStdGen [50..(49 + m)]
+
+-- Function to divide experiments into chunks
+divideIntoChunks :: Int -> [a] -> [[a]]
+divideIntoChunks _ [] = []
+divideIntoChunks n xs = take n xs : divideIntoChunks n (drop n xs)
+
+-- Parallel Monte Carlo function using a fixed number of RNGs
+parallelMonteCarloFixedRNGs :: Int -> Int -> Hand -> [Card] -> Int -> Float -> Float
+parallelMonteCarloFixedRNGs m n user community players pot =
+    let rngs = cycle (makeFixedRNGs m)  -- Creates a repeating list of RNGs
+        results = runEval $ parList rseq [playRound gen user community players | gen <- take n rngs]
+    in pot * ((sum $ runEval $ parList rseq results) / fromIntegral n)
+
+-- Function to run a chunk of experiments
+runChunk :: (StdGen, [(Hand, [Card], Int)]) -> [Float]
+runChunk (gen, experiments) = 
+    map (\(user, community, players) -> playRound gen user community players) experiments
+
 initialDeck :: [Card]
 initialDeck = [Card s r | r <- [minBound..maxBound], s <- [Hearts,Diamonds,Clubs,Spades]]
 
@@ -192,57 +228,15 @@ readHandsFromFile filePath = do
     let linesOfFile = lines content
     return $ map parseLine linesOfFile
 
-stor :: String -> Rank
-stor "Two" = Two
-stor "Three" = Three
-stor "Four" = Four
-stor "Five" = Five
-stor "Six" = Six
-stor "Seven" = Seven
-stor "Eight" = Eight
-stor "Nine" = Nine
-stor "Jack" = Jack
-stor "Queen" = Queen
-stor "King" = King
-stor "Ace" = Ace
-stor _ = Ace 
-
-stos :: String -> Suit
-stos "Hearts" = Hearts
-stos "Diamonds" = Diamonds
-stos "Clubs" = Clubs
-stos "Spades" = Spades
-stos _ = Spades
-
-stoh :: (String, String) -> Card
-stoh (s, r) = Card (stos s) (stor r)
-
-listOfHands :: [Card] -> [[Card]]
-listOfHands (x:y:xs) = [x, y] : listOfHands xs
-listOfHands _ = []
-
--- result <- monteCarloParShuffle 10000 userHand [Card Diamonds Five] 3 100
--- result <- monteCarloParExperiment 10000 userHand [Card Diamonds Five] 3 100
--- result <- monteCarloParBoth 10000 userHand [Card Diamonds Five] 3 100
-
-mcHand :: Hand -> Float
-mcHand hand = monteCarlo 1000 hand [] 3 100
-
-runMc :: [Hand] -> [Float]
-runMc ls = runEval $ parList rseq (map mcHand ls)
-
-    -- hands <- readHandsFromFile "hands.txt"
-    -- let strategy = parList rseq
-    --     ls = (listOfHands (map stoh hands))
 
 main :: IO ()
 main = do
+    -- let gen = mkStdGen 42
+    --     total = sum $ runEval $ parList rseq (recursiveMonteCarlo gen 10000 userHand [] 3 100) in
+    --     putStrLn $ show $ (total / 10000.0)
     -- putStrLn $ show $ parallelMonteCarlo 10000 userHand [] 3 100
-    putStrLn $ show $ parallelMonteCarlo 10000 userHand [] 3 100
-    -- putStrLn $ show $ runMc ls
-    -- putStrLn $ show (sum result)
-
-
+    -- putStrLn $ show $ monteCarlo 10000 userHand [] 3 100
+    putStrLn $ show $ parallelMonteCarloFixedRNGs 50 10000 userHand [] 3 100
 
 
 
