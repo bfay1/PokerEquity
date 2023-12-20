@@ -101,7 +101,7 @@ classify' hand =
         pairwise ls = zip ls (tail ls)
 
 
-
+ -- shuffles a deck into a random order
 shuffle :: StdGen -> Deck -> Deck
 shuffle gen deck = fst $ foldl shuffleStep ([], gen) deck
     where
@@ -193,7 +193,7 @@ recursiveChunkMonteCarlo :: StdGen -> Int -> Hand -> [Card] -> Int -> Float -> [
 recursiveChunkMonteCarlo _ 0 _ _ _ _ = []
 recursiveChunkMonteCarlo gen n user community players pot = 
     let (gen1, gen2) = split gen
-    in (runEval $ rpar $ replicate 100 (playRound gen1 user community players)) ++ (runEval $ rseq $ recursiveChunkMonteCarlo gen2 (n - 100) user community players pot)
+    in ( {- runEval $ parList rseq $ -} replicate 10 (runEval $ rseq $ playRound gen2 user community players)) ++ (runEval $ rseq $ recursiveChunkMonteCarlo gen1 (n - 10) user community players pot)
     -- in (playRound gen user community players) : (recursiveMonteCarlo gen2 (n - 1) user community players pot)
 
 -- Create a fixed number of RNGs
@@ -205,12 +205,14 @@ divideIntoChunks :: Int -> [a] -> [[a]]
 divideIntoChunks _ [] = []
 divideIntoChunks n xs = take n xs : divideIntoChunks n (drop n xs)
 
+
 -- Parallel Monte Carlo function using a fixed number of RNGs
 parallelMonteCarloFixedRNGs :: Int -> Int -> Hand -> [Card] -> Int -> Float -> Float
 parallelMonteCarloFixedRNGs m n user community players pot =
     let rngs = cycle (makeFixedRNGs m)  -- Creates a repeating list of RNGs
         results = runEval $ parList rseq [playRound gen user community players | gen <- take n rngs]
     in pot * ((sum $ runEval $ parList rseq results) / fromIntegral n)
+
 
 -- Function to run a chunk of experiments
 runChunk :: (StdGen, [(Hand, [Card], Int)]) -> [Float]
@@ -234,12 +236,15 @@ readHandsFromFile filePath = do
 
 main :: IO ()
 main = do
+    -- putStrLn $ show $ parallelMonteCarloFixedRNGs 30 10000 userHand [] 3 100
     let gen = mkStdGen 42
-        total = sum $ runEval $ parList rseq (recursiveChunkMonteCarlo gen 10000 userHand [] 3 100) in
+        total = sum $ runEval $ parList rseq (recursiveMonteCarlo gen 10000 userHand [] 3 100) in
         putStrLn $ show $ (total / 10000.0)
+    -- let gen = mkStdGen 42
+    --     total = sum $ runEval $ parList rseq (recursiveChunkMonteCarlo gen 10000 userHand [] 3 100) in
+    --     putStrLn $ show $ (total / 10000.0)
     -- putStrLn $ show $ parallelMonteCarlo 10000 userHand [] 3 100
     -- putStrLn $ show $ monteCarlo 10000 userHand [] 3 100
-    -- putStrLn $ show $ parallelMonteCarloFixedRNGs 50 10000 userHand [] 3 100
 
 
 
