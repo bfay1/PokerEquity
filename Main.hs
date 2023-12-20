@@ -1,16 +1,12 @@
 {-# LANGUAGE DeriveGeneric #-}
 module Main where
 
-import System.CPUTime
 import Data.List
 import Data.Ord
 import System.Random
-import Control.Applicative
 import Control.Parallel.Strategies
 import Control.DeepSeq
-import Control.Concurrent.Async
 import GHC.Generics
-import Control.Monad
 
 -- import Data.Array.Repa
 -- import Data.Array.Repa.Algorithms.Randomish
@@ -58,7 +54,7 @@ instance Ord Card where
     x `compare` y = rank x `compare` rank y
 
 instance Show Card where
-    show (Card suit rank) = show rank ++ " of " ++ show suit
+    show (Card s r) = show r ++ " of " ++ show s
 
 
 data HandRank = StraightFlush | FourOfAKind | FullHouse | Flush | Straight | ThreeOfAKind | TwoPair | Pair | HighCard
@@ -74,6 +70,7 @@ share :: [Hand] -> Float
 share (x:xs)
     | or $ map ((< ranking x) . ranking) xs = 0
     | otherwise = 1 / (fromIntegral $ (length . filter ((== ranking x) . ranking)) (x:xs))
+share _ = 0.0
 
 
 ranking :: Hand -> (HandRank, [Rank])
@@ -94,6 +91,7 @@ classify' hand =
         [1,1,3]                                 -> ThreeOfAKind
         [2,3]                                   -> FullHouse
         [1,4]                                   -> FourOfAKind
+        _                                       -> HighCard
     where
         xs = (sort . map rank) hand
         (s:ss) = map suit hand
@@ -120,8 +118,10 @@ deal gen user community n = deal' shuffled
         deck = [Card s r | r <- [minBound..maxBound], s <- [Hearts,Diamonds,Clubs,Spades]] \\ complement
         complement = community ++ user
         deal' (a:b:c:d:e:fs) = [a,b,c,d,e] : user : (opponentCards n fs)
+        deal' _ = []
         opponentCards 0 _ = []
         opponentCards m (x:y:zs) = [x, y] : (opponentCards (m - 1) zs)
+        opponentCards _ _ = []
 
 
 deal2 :: Hand -> [Card] -> Int -> [Card] -> Table
@@ -130,8 +130,10 @@ deal2 user community n shuffled = deal2' shuffled'
         shuffled' = community ++ (shuffled \\ complement)
         complement = community ++ user
         deal2' (a:b:c:d:e:fs) = [a,b,c,d,e] : user : (opponentCards n fs)
+        deal2' _ = []
         opponentCards 0 _ = []
         opponentCards m (x:y:zs) = [x, y] : (opponentCards (m - 1) zs)
+        opponentCards _ _ = []
 
 
 userHand :: Hand
@@ -142,6 +144,7 @@ bestHand cards = minimumBy (comparing ranking) $ filter ((==5) . length) (subseq
 
 scoreRound :: Table -> Float
 scoreRound (community:players) = share $ (map (bestHand . (++ community))) players
+scoreRound _ = 0.0
 
 
 --
@@ -183,14 +186,14 @@ recursiveMonteCarlo :: StdGen -> Int -> Hand -> [Card] -> Int -> Float -> [Float
 recursiveMonteCarlo _ 0 _ _ _ _ = []
 recursiveMonteCarlo gen n user community players pot = 
     let (gen1, gen2) = split gen
-    in (runEval $ rseq $ playRound gen user community players) : (runEval $ rpar $ recursiveMonteCarlo gen2 (n - 1) user community players pot)
+    in (runEval $ rseq $ playRound gen1 user community players) : (runEval $ rpar $ recursiveMonteCarlo gen2 (n - 1) user community players pot)
     -- in (playRound gen user community players) : (recursiveMonteCarlo gen2 (n - 1) user community players pot)
 
 recursiveChunkMonteCarlo :: StdGen -> Int -> Hand -> [Card] -> Int -> Float -> [Float]
 recursiveChunkMonteCarlo _ 0 _ _ _ _ = []
 recursiveChunkMonteCarlo gen n user community players pot = 
     let (gen1, gen2) = split gen
-    in (runEval $ rpar $ replicate 100 (playRound gen user community players)) ++ (runEval $ rseq $ recursiveChunkMonteCarlo gen2 (n - 100) user community players pot)
+    in (runEval $ rpar $ replicate 100 (playRound gen1 user community players)) ++ (runEval $ rseq $ recursiveChunkMonteCarlo gen2 (n - 100) user community players pot)
     -- in (playRound gen user community players) : (recursiveMonteCarlo gen2 (n - 1) user community players pot)
 
 -- Create a fixed number of RNGs
@@ -219,7 +222,7 @@ initialDeck = [Card s r | r <- [minBound..maxBound], s <- [Hearts,Diamonds,Clubs
 
 parseLine :: String -> (String, String)
 parseLine line = case words line of
-    [suit, rank] -> (suit, rank)
+    [s, r] -> (s, r)
     _            -> error "Invalid line format"
 
 readHandsFromFile :: FilePath -> IO [(String, String)]
@@ -231,12 +234,12 @@ readHandsFromFile filePath = do
 
 main :: IO ()
 main = do
-    -- let gen = mkStdGen 42
-    --     total = sum $ runEval $ parList rseq (recursiveMonteCarlo gen 10000 userHand [] 3 100) in
-    --     putStrLn $ show $ (total / 10000.0)
+    let gen = mkStdGen 42
+        total = sum $ runEval $ parList rseq (recursiveChunkMonteCarlo gen 10000 userHand [] 3 100) in
+        putStrLn $ show $ (total / 10000.0)
     -- putStrLn $ show $ parallelMonteCarlo 10000 userHand [] 3 100
     -- putStrLn $ show $ monteCarlo 10000 userHand [] 3 100
-    putStrLn $ show $ parallelMonteCarloFixedRNGs 50 10000 userHand [] 3 100
+    -- putStrLn $ show $ parallelMonteCarloFixedRNGs 50 10000 userHand [] 3 100
 
 
 
