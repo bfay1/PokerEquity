@@ -5,25 +5,33 @@ import Data.List
 import Data.Ord
 import System.Random
 import Control.Parallel.Strategies
-import Control.DeepSeq
 import GHC.Generics
+import System.Environment
 
--- import Data.Array.Repa
--- import Data.Array.Repa.Algorithms.Randomish
--- import Control.Monad.Par
--- import Control.Monad.MonteCarlo
--- import System.Random.TF
+stor :: String -> Rank
+stor "Two" = Two
+stor "Three" = Three
+stor "Four" = Four
+stor "Five" = Five
+stor "Six" = Six
+stor "Seven" = Seven
+stor "Eight" = Eight
+stor "Nine" = Nine
+stor "Jack" = Jack
+stor "Queen" = Queen
+stor "King" = King
+stor "Ace" = Ace
+stor _ = Ace 
 
-chunkSize :: Int
-chunkSize = 100
+stos :: String -> Suit
+stos "Hearts" = Hearts
+stos "Diamonds" = Diamonds
+stos "Clubs" = Clubs
+stos "Spades" = Spades
+stos _ = Spades
 
-forceToNF :: NFData a => a -> b -> b
-forceToNF x y = x `deepseq` y
-
-chunksOf :: Int -> [a] -> [[a]]
-chunksOf _ [] = []
-chunksOf n xs = take n xs : chunksOf n (drop n xs)
-
+stoh :: (String, String) -> Card
+stoh (s, r) = Card (stos s) (stor r)
 
 data Suit = Spades | Hearts | Diamonds | Clubs
     deriving (Generic, Show, Eq)
@@ -41,12 +49,6 @@ suits = [Spades, Diamonds, Hearts, Clubs]
 data Card = Card { suit :: Suit, rank :: Rank }
 
 
-instance NFData Rank
-instance NFData Suit
-
-instance NFData Card where
-  rnf (Card r s) = rnf r `seq` rnf s
-
 instance Eq Card where
      x == y = rank x == rank y
 
@@ -55,7 +57,6 @@ instance Ord Card where
 
 instance Show Card where
     show (Card s r) = show r ++ " of " ++ show s
-
 
 data HandRank = StraightFlush | FourOfAKind | FullHouse | Flush | Straight | ThreeOfAKind | TwoPair | Pair | HighCard
     deriving (Eq, Show, Ord, Enum, Bounded)
@@ -124,18 +125,6 @@ deal gen user community n = deal' shuffled
         opponentCards _ _ = []
 
 
-deal2 :: Hand -> [Card] -> Int -> [Card] -> Table
-deal2 user community n shuffled = deal2' shuffled'
-    where
-        shuffled' = community ++ (shuffled \\ complement)
-        complement = community ++ user
-        deal2' (a:b:c:d:e:fs) = [a,b,c,d,e] : user : (opponentCards n fs)
-        deal2' _ = []
-        opponentCards 0 _ = []
-        opponentCards m (x:y:zs) = [x, y] : (opponentCards (m - 1) zs)
-        opponentCards _ _ = []
-
-
 userHand :: Hand
 userHand = [Card Diamonds Ace, Card Hearts Ace]
 
@@ -147,15 +136,6 @@ scoreRound (community:players) = share $ (map (bestHand . (++ community))) playe
 scoreRound _ = 0.0
 
 
---
--- playRound :: Hand -> [Card] -> Int -> Float
--- playRound user community players =
---     let gen = newStdGen :: IO StdGen
---         (gen', _) = random gen in
---         -- (gen', _) = random gen :: (Int, StdGen) in
---     scoreRound (deal gen' user community players)
-
-
 playRound :: StdGen -> Hand -> [Card] -> Int -> Float
 playRound gen user community players = 
     scoreRound (deal gen user community players)
@@ -163,12 +143,6 @@ playRound gen user community players =
 
 makeGenerators :: Int -> [StdGen]
 makeGenerators n = runEval $ parList rseq (map mkStdGen [50..(50 + n - 1)])
-
-
-playRound2 :: Hand -> [Card] -> Int -> [Card] -> Float
-playRound2 user community players shuffled = do
-    scoreRound (deal2 user community players shuffled)
-
 
 monteCarlo :: Int -> Hand -> [Card] -> Int -> Float -> Float
 monteCarlo n user community players pot =
@@ -186,15 +160,13 @@ recursiveMonteCarlo :: StdGen -> Int -> Hand -> [Card] -> Int -> Float -> [Float
 recursiveMonteCarlo _ 0 _ _ _ _ = []
 recursiveMonteCarlo gen n user community players pot = 
     let (gen1, gen2) = split gen
-    in (runEval $ rseq $ playRound gen1 user community players) : (runEval $ rpar $ recursiveMonteCarlo gen2 (n - 1) user community players pot)
-    -- in (playRound gen user community players) : (recursiveMonteCarlo gen2 (n - 1) user community players pot)
+    in (runEval $ rseq $ playRound gen1 user community players) : (runEval $ rseq $ recursiveMonteCarlo gen2 (n - 1) user community players pot)
 
 recursiveChunkMonteCarlo :: StdGen -> Int -> Hand -> [Card] -> Int -> Float -> [Float]
 recursiveChunkMonteCarlo _ 0 _ _ _ _ = []
 recursiveChunkMonteCarlo gen n user community players pot = 
     let (gen1, gen2) = split gen
     in ( {- runEval $ parList rseq $ -} replicate 10 (runEval $ rseq $ playRound gen2 user community players)) ++ (runEval $ rseq $ recursiveChunkMonteCarlo gen1 (n - 10) user community players pot)
-    -- in (playRound gen user community players) : (recursiveMonteCarlo gen2 (n - 1) user community players pot)
 
 -- Create a fixed number of RNGs
 makeFixedRNGs :: Int -> [StdGen]
@@ -205,7 +177,6 @@ divideIntoChunks :: Int -> [a] -> [[a]]
 divideIntoChunks _ [] = []
 divideIntoChunks n xs = take n xs : divideIntoChunks n (drop n xs)
 
-
 -- Parallel Monte Carlo function using a fixed number of RNGs
 parallelMonteCarloFixedRNGs :: Int -> Int -> Hand -> [Card] -> Int -> Float -> Float
 parallelMonteCarloFixedRNGs m n user community players pot =
@@ -213,38 +184,55 @@ parallelMonteCarloFixedRNGs m n user community players pot =
         results = runEval $ parList rseq [playRound gen user community players | gen <- take n rngs]
     in pot * ((sum $ runEval $ parList rseq results) / fromIntegral n)
 
-
 -- Function to run a chunk of experiments
 runChunk :: (StdGen, [(Hand, [Card], Int)]) -> [Float]
 runChunk (gen, experiments) = 
-    map (\(user, community, players) -> playRound gen user community players) experiments
+    map (\(user, community, players) -> runEval $ rseq (playRound gen user community players)) experiments
 
 initialDeck :: [Card]
 initialDeck = [Card s r | r <- [minBound..maxBound], s <- [Hearts,Diamonds,Clubs,Spades]]
 
-parseLine :: String -> (String, String)
-parseLine line = case words line of
-    [s, r] -> (s, r)
-    _            -> error "Invalid line format"
 
-readHandsFromFile :: FilePath -> IO [(String, String)]
-readHandsFromFile filePath = do
-    content <- readFile filePath
-    let linesOfFile = lines content
-    return $ map parseLine linesOfFile
+sequential :: Int -> Hand -> Int ->  Float
+sequential e hand players = monteCarlo e hand [] players 100
 
+naive :: Int -> Hand -> Int -> Float
+naive e hand players = parallelMonteCarlo e hand [] players 100
+
+chunk :: Int -> Hand -> Int -> Float
+chunk e hand players = parallelMonteCarloFixedRNGs 30 e hand [] players 100
+
+recursive :: Int -> Hand -> Int -> Float
+recursive e hand players = 
+    let gen = mkStdGen 42
+        total = sum $ runEval $ parList rseq (recursiveMonteCarlo gen e hand [] players 100) in
+    (total / fromIntegral e)
+
+recursiveChunk :: Int -> Hand -> Int -> Float
+recursiveChunk e hand players = 
+    let gen = mkStdGen 42
+        total = sum $ runEval $ parList rseq (recursiveChunkMonteCarlo gen e hand [] players 100) in
+    (total / fromIntegral e)
+
+
+findMethod :: String -> Int -> Hand -> Int -> Float 
+findMethod "sequential" e hand players = sequential e hand players
+findMethod "naive" e hand players = naive e hand players
+findMethod "chunk" e hand players = chunk e hand players
+findMethod "recursive" e hand players = recursive e hand players
+findMethod "recursiveChunk" e hand players = recursiveChunk e hand players
+findMethod _ _ _ _ = 0.0
 
 main :: IO ()
 main = do
-    -- putStrLn $ show $ parallelMonteCarloFixedRNGs 30 10000 userHand [] 3 100
-    let gen = mkStdGen 42
-        total = sum $ runEval $ parList rseq (recursiveMonteCarlo gen 10000 userHand [] 3 100) in
-        putStrLn $ show $ (total / 10000.0)
-    -- let gen = mkStdGen 42
-    --     total = sum $ runEval $ parList rseq (recursiveChunkMonteCarlo gen 10000 userHand [] 3 100) in
-    --     putStrLn $ show $ (total / 10000.0)
-    -- putStrLn $ show $ parallelMonteCarlo 10000 userHand [] 3 100
-    -- putStrLn $ show $ monteCarlo 10000 userHand [] 3 100
+    args <- getArgs
+    if length args /= 7
+        then putStrLn $ "Usage : ./Main <suit> <rank> <suit> <rank> <numplayers> <numexperiments> <method>"
+    else do
+        let [s1, r1, s2, r2, players, experiments, method] = args
+        putStrLn $ show $ findMethod method (read experiments) [(stoh (s1, r1)), (stoh (s2, r2))] (read players)
+
+
 
 
 

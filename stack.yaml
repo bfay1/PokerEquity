@@ -5,6 +5,10 @@ packages:
 
 allow-newer: true
 
+build:
+  library-profiling: true
+  executable-profiling: true
+
 extra-deps:
   - random-1.2.1
   - parallel-3.2.2.0
