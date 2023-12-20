@@ -1,1 +1,9 @@
 .stack-work/*
+Main.eventlog
+Main.hi
+Main.o
+Main
+Data*
+Hand.hs
+Deck*
+stack.yaml.lock
