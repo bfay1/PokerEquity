@@ -157,8 +157,8 @@ playRound gen user community players =
     scoreRound (deal gen user community players)
 
 
-makeGenerators :: [StdGen]
-makeGenerators = map mkStdGen [50..(50 + 1000)]
+makeGenerators :: Int -> [StdGen]
+makeGenerators n = map mkStdGen [50..(50 + n - 1)]
 
 
 playRound2 :: Hand -> [Card] -> Int -> [Card] -> Float
@@ -168,13 +168,13 @@ playRound2 user community players shuffled = do
 
 monteCarlo :: Int -> Hand -> [Card] -> Int -> Float -> Float
 monteCarlo n user community players pot =
-    let results = (map (\g -> playRound g user community players) makeGenerators) in
+    let results = (map (\g -> playRound g user community players) (makeGenerators n)) in
     pot * (sum results / (fromIntegral n))
 
 
 parallelMonteCarlo :: Int -> Hand -> [Card] -> Int -> Float -> Float
 parallelMonteCarlo n user community players pot =
-    let results = runEval $ parList rseq (map (\g -> playRound g user community players) makeGenerators) in
+    let results = runEval $ parList rseq (map (\g -> playRound g user community players) (makeGenerators n)) in
     pot * (sum results / (fromIntegral n))
 
 
@@ -231,13 +231,15 @@ mcHand hand = monteCarlo 1000 hand [] 3 100
 runMc :: [Hand] -> [Float]
 runMc ls = runEval $ parList rseq (map mcHand ls)
 
+    -- hands <- readHandsFromFile "hands.txt"
+    -- let strategy = parList rseq
+    --     ls = (listOfHands (map stoh hands))
 
 main :: IO ()
 main = do
-    hands <- readHandsFromFile "hands.txt"
-    let strategy = parList rseq
-        ls = (listOfHands (map stoh hands))
-    putStrLn $ show $ runMc ls
+    -- putStrLn $ show $ parallelMonteCarlo 10000 userHand [] 3 100
+    putStrLn $ show $ parallelMonteCarlo 10000 userHand [] 3 100
+    -- putStrLn $ show $ runMc ls
     -- putStrLn $ show (sum result)
 
 
