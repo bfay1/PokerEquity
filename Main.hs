@@ -143,6 +143,7 @@ playRound :: StdGen -> Hand -> [Card] -> Int -> Float
 playRound gen user community players = 
     scoreRound (deal gen user community players)
 
+-- 50 is an arbitrary seed, you can make it whatever you like
 
 makeGenerators :: Int -> [StdGen]
 makeGenerators n = runEval $ parList rseq (map mkStdGen [50..(50 + n - 1)])
